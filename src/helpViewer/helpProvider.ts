@@ -1,16 +1,16 @@
 import { Memento, window } from 'vscode';
-import * as http from 'http';
+import * as nodeFetch from 'node-fetch';
 import * as cp from 'child_process';
 
 import * as rHelp from '.';
 import { extensionContext } from '../extension';
-import { DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
+import { catchAsError, config, DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
 
 export interface RHelpProviderOptions {
-	// path of the R executable
+    // path of the R executable
     rPath: string;
-	// directory in which to launch R processes
-	cwd?: string;
+    // directory in which to launch R processes
+    cwd?: string;
     // listener to notify when new packages are installed
     pkgListener?: () => void;
 }
@@ -40,20 +40,21 @@ export class HelpProvider {
     }
 
     public launchRHelpServer(): ChildProcessWithPort{
-		const lim = '---vsc---';
-		const portRegex = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
-        
+        const lim = '---vsc---';
+        const portRegex = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
+
         const newPackageRegex = new RegExp('NEW_PACKAGES');
 
         // starts the background help server and waits forever to keep the R process running
         const scriptPath = extensionContext.asAbsolutePath('R/help/helpServer.R');
-        // const cmd = `${this.rPath} --silent --slave --no-save --no-restore -f "${scriptPath}"`;
         const args = [
             '--silent',
             '--slave',
             '--no-save',
             '--no-restore',
-            '-f',
+            '-e',
+            'base::source(base::commandArgs(TRUE))',
+            '--args',
             scriptPath
         ];
         const cpOptions = {
@@ -61,7 +62,8 @@ export class HelpProvider {
             env: {
                 ...process.env,
                 VSCR_LIB_PATHS: getRLibPaths(),
-                VSCR_LIM: lim
+                VSCR_LIM: lim,
+                VSCR_USE_RENV_LIB_PATH: config().get<boolean>('useRenvLibPath') ? 'TRUE' : 'FALSE'
             },
         };
 
@@ -90,7 +92,7 @@ export class HelpProvider {
                 resolve(0);
             });
         });
-        
+
         const exitHandler = () => {
             childProcess.port = 0;
         };
@@ -104,7 +106,7 @@ export class HelpProvider {
         return childProcess;
     }
 
-	public async getHelpFileFromRequestPath(requestPath: string): Promise<undefined|rHelp.HelpFile> {
+    public async getHelpFileFromRequestPath(requestPath: string): Promise<undefined|rHelp.HelpFile> {
 
         const port = await this.cp?.port;
         if(!port || typeof port !== 'number'){
@@ -113,64 +115,29 @@ export class HelpProvider {
 
         // remove leading '/'
         while(requestPath.startsWith('/')){
-            requestPath = requestPath.substr(1);
-        }
-
-        interface HtmlResult {
-            content?: string,
-            redirect?: string
+            requestPath = requestPath.slice(1);
         }
 
         // forward request to R instance
-        // below is just a complicated way of getting a http response from the help server
-        let url = `http://localhost:${port}/${requestPath}`;
-        let html = '';
-        const maxForwards = 3;
-        for (let index = 0; index < maxForwards; index++) {
-            const htmlPromise = new Promise<HtmlResult>((resolve, reject) => {
-                let content = '';
-                http.get(url, (res: http.IncomingMessage) => {
-                    if(res.statusCode === 302){
-                        resolve({redirect: res.headers.location});
-                    } else{
-                        res.on('data', (chunk) => {
-                            try{
-                                // eslint-disable-next-line
-                                content += chunk.toString();
-                            } catch(e){
-                                reject();
-                            }
-                        });
-                        res.on('close', () => {
-                            resolve({content: content});
-                        });
-                        res.on('error', () => {
-                            reject();
-                        });
-                    }
-                });
-            });
-            const htmlResult = await htmlPromise;
-            if(htmlResult.redirect){
-                const newUrl = new URL(htmlResult.redirect, url);
-                requestPath = newUrl.pathname;
-                url = newUrl.toString();
-            } else{
-                html = htmlResult.content || '';
-                break;
-            }
+        const url = `http://localhost:${port}/${requestPath}`;
+        const rep = await nodeFetch.default(url);
+        if(rep.status !== 200){
+            return undefined;
         }
+        const html = await rep.text();
+
+        // read "corrected" request path, that was forwarded to
+        const requestPath1 = rep.url.replace(/^http:\/\/localhost:[0-9]*\//, '');
 
         // return help file
         const ret: rHelp.HelpFile = {
-            requestPath: requestPath,
+            requestPath: requestPath1,
             html: html,
             isRealFile: false,
             url: url
         };
         return ret;
     }
-
 
     dispose(): void {
         this.cp.dispose();
@@ -179,11 +146,11 @@ export class HelpProvider {
 
 
 export interface AliasProviderArgs {
-	// R path, must be vanilla R
-	rPath: string;
+    // R path, must be vanilla R
+    rPath: string;
     // cwd
     cwd?: string;
-	// getAliases.R
+    // getAliases.R
     rScriptFile: string;
 
     persistentState: Memento;
@@ -195,7 +162,8 @@ interface PackageAliases {
     aliasFile?: string;
     aliases?: {
         [key: string]: string;
-    }
+    },
+    error?: string
 }
 interface AllPackageAliases {
     [key: string]: PackageAliases
@@ -208,7 +176,7 @@ export class AliasProvider {
     private readonly cwd?: string;
     private readonly rScriptFile: string;
     private aliases?: undefined | rHelp.Alias[];
-	private readonly persistentState?: Memento;
+    private readonly persistentState?: Memento;
 
     constructor(args: AliasProviderArgs){
         this.rPath = args.rPath;
@@ -230,18 +198,18 @@ export class AliasProvider {
         if(this.aliases){
             return this.aliases;
         }
-        
+
         // try cached aliases:
         const cachedAliases = this.persistentState?.get<rHelp.Alias[]>('r.helpPanel.cachedAliases');
         if(cachedAliases){
             this.aliases = cachedAliases;
             return cachedAliases;
         }
-        
+
         // try to make new aliases (returns undefined if unsuccessful):
         const newAliases = await this.makeAllAliases();
         this.aliases = newAliases;
-        this.persistentState?.update('r.helpPanel.cachedAliases', newAliases);
+        await this.persistentState?.update('r.helpPanel.cachedAliases', newAliases);
         return newAliases;
     }
 
@@ -252,16 +220,23 @@ export class AliasProvider {
         if(!allPackageAliases){
             return undefined;
         }
-        
+
         // flatten aliases into one list:
         const allAliases: rHelp.Alias[] = [];
-        for(const pkg in allPackageAliases){
-            const pkgName = allPackageAliases[pkg].package || pkg;
-            const pkgAliases = allPackageAliases[pkg].aliases || {};
+        for (const pkg in allPackageAliases) {
+            const item = allPackageAliases[pkg];
+            const pkgName = item.package || pkg;
+
+            if (item.error) {
+                void window.showErrorMessage(`An error occurred while reading the aliases file for package ${pkgName}: ${item.error}. The package files may be corrupted. Try reinstalling the package.`);
+                continue;
+            }
+
+            const pkgAliases = item.aliases || {};
             for(const fncName in pkgAliases){
                 allAliases.push({
-                    name: fncName,
-                    alias: pkgAliases[fncName],
+                    name: pkgAliases[fncName],
+                    alias: fncName,
                     package: pkgName
                 });
             }
@@ -277,7 +252,8 @@ export class AliasProvider {
             env: {
                 ...process.env,
                 VSCR_LIB_PATHS: getRLibPaths(),
-                VSCR_LIM: lim
+                VSCR_LIM: lim,
+                VSCR_USE_RENV_LIB_PATH: config().get<boolean>('useRenvLibPath') ? 'TRUE' : 'FALSE'
             }
         };
 
@@ -289,7 +265,7 @@ export class AliasProvider {
             '-f',
             this.rScriptFile
         ];
-        
+
         try {
             const result = await spawnAsync(this.rPath, args, options);
             if (result.status !== 0) {
@@ -297,14 +273,14 @@ export class AliasProvider {
             }
             const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
             const match = re.exec(result.stdout);
-            if (match.length !== 2) {
+            if (match?.length !== 2) {
                 throw new Error('Could not parse R output.');
             }
             const json = match[1];
             return <AllPackageAliases>JSON.parse(json) || {};
         } catch (e) {
             console.log(e);
-            void window.showErrorMessage((<{ message: string }>e).message);
+            void window.showErrorMessage(catchAsError(e).message);
         }
     }
 }

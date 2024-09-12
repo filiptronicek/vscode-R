@@ -4,6 +4,174 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.8.4](https://github.com/REditorSupport/vscode-R/releases/tag/v2.8.4)
+
+* Upgrade dependencies
+
+## [2.8.3](https://github.com/REditorSupport/vscode-R/releases/tag/v2.8.3)
+
+Enhancements:
+
+* Substitute variables in `r.rpath` and `r.rterm` settings. (#1444)
+* Improve code chunk handling in base .R files. (#1454, thanks @kylebutts)
+
+Fixes:
+
+* Fix multiline smart-knit (#1493)
+* Fix RMD Progress Bar (#1491)
+* Remove `.` as an R language `editor.wordSeparators` (#1503, thanks @opasche)
+* `numeric_version()` wants character as of R 4.4 (#1520, #1523, thanks @jennybc and @pawelru)
+* Handle terminals created by vscode-Python (#1511, thanks @tomasnobrega)
+
+## [2.8.2](https://github.com/REditorSupport/vscode-R/releases/tag/v2.8.2)
+
+Enhancements:
+
+* Update built-in function match regex. (#1431, thanks @MichaelChirico)
+* Add `r.useRenvLibPath` setting to opt in adding `renv` package cache to `.libPaths` when R processes (language server, help server, etc.) start up. (#1423, thanks @nateybear)
+* Add a VScode task to run `testthat::test_file()`` on the currently open file. (#1415, thanks @gowerc)
+* `r.rterm.*` settings now accept paths relative to the current workspace folder to support customized commands
+to create R terminals. (#1398, thanks @Tal500)
+* Upgrade ag-grid-community to v30.2.0 (#1434)
+* Upgrade vscode-languageclient to v9.0.1 (#1435)
+
+## [2.8.1](https://github.com/REditorSupport/vscode-R/releases/tag/v2.8.1)
+
+Enhancements:
+
+* A new setting `r.lsp.multiServer` is added. If disabled, only a single language server will be spawned from the first workspace folder to handle all requests from all workspaces and files. (#1375)
+* Upgrade ag-grid-community to v30.0.0 (#1379)
+
+Fixes:
+
+* Fix handling `r.session.data.pageSize = 0`. (#1364)
+* Fix help panel in remote host. (#1374)
+* Fix missing package names in "Install CRAN Package". (#1377)
+
+## [2.8.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.8.0)
+
+New Features:
+
+* A new experimental setting `r.session.useWebServer` is added to support communicating with R session via a web server running in R. This requires R package `httpuv` to be installed. Currently,
+it enhances the session symbol completion when accessing R object via `$` and `@`. *This feature is
+experimental and may be subject to change in the future.* (#1151)
+* A new setting `r.rmarkdown.preview.zoom` is added to support the default zoom level or R markdown
+preview. (#1333)
+
+Enhancements:
+
+* Improve message when error occurs on loading R packages. (#1334, thanks to @csaybar)
+* Upgrade ag-grid-community to v29.3.0 (#1346)
+
+Fixes:
+
+* Commands that are not intended in the command pallete are now hidden. (#1327, #1330)
+
+## [2.7.2](https://github.com/REditorSupport/vscode-R/releases/tag/v2.7.2)
+
+Enhancements:
+
+* Upgrade vscode-languageclient to 8.1.0 (#1315)
+* Workspace viewer will be cleaned-up when the attached R session exits. (#1318, #1321)
+* A new command `r.view` is added to view selected objects. (#1319, thanks @yeyun1999)
+* Workspace viewer commands that require an attached R session are now disabled when no R session is attached. (#1323)
+
+Fixes:
+
+* Workspace viewer now has a fallback message instead of causing error if session watcher is disabled. (#1317)
+
+## [2.7.1](https://github.com/REditorSupport/vscode-R/releases/tag/v2.7.1)
+
+New Features:
+
+* A new setting `r.source.echo` is added to support sending `source(file, echo = TRUE)` by default. (#1286, thanks @jakub-jedrusiak)
+* A new setting `r.removeLeadingComments` is added to remove leading comments when sending code to terminal. (#1245, thanks @gowerc)
+
+Enhancements:
+
+* Help page previews from `.Rd` files are now generated asynchronously. (#1273)
+* Column name is also displayed in the column tooltip in a data viewer. (#1278, thanks @eitsupi)
+* Upgrade ag-grid-community to v29.0.0 (#1290)
+
+Fixes:
+
+* Fixed broken tests (#1302)
+
+## [2.7.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.7.0)
+
+New Features:
+
+* New syntax highlighting support for `NAMESPACE` and `.Rbuildignore`. (#1221, thanks @nx10)
+* Support help preview in package development. (#1259, #1266)
+
+Enhancements:
+
+* The extension is re-published to [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r). ([open-vsx#591](https://github.com/open-vsx/publish-extensions/issues/591)).
+* The WebView panel now supports htmlwidgets using Web Workers. (#1261, thanks @anthonynorth)
+* Code block detection now includes parentheses, which is more consistent with RStudio behavior. (#1269)
+
+Fixes:
+
+* `View()` no longer stops with `tibble()` that contains objects that do not
+implement `asJSON()` method. (#1255)
+* Fixed the regex for detecting problems reported by testthat from tasks. (#1257, thans @gowerc)
+* Fixed syntax highlighting in help preview under R 4.2.x. (#1268)
+
+## [2.6.1](https://github.com/REditorSupport/vscode-R/releases/tag/v2.6.1)
+
+Enhancements:
+
+* A new setting `r.plot.devArgs` is added to allow customizing png device arguments (e.g. width and height) for the PNG plot viewer. (#1235)
+
+Fixes:
+
+* Fixed opening requested file externally when viewer is disabled. (#1209)
+* Support trailing slash in code-server's URI template. (#1241)
+
+## [2.6.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.6.0)
+
+New Features:
+
+* A new command "R: Generate C/C++ Configuration" is added to support auto-generating [`c_cpp_properties.json`](https://code.visualstudio.com/docs/cpp/customize-default-settings-cpp) in an R package with C/C++ code for [C/C++](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools) Extension to provide IntelliSense. (#1205, thanks @nx10)
+
+Enhancements:
+
+* Support showing KeTeX formula in help viewer. (#1213)
+
+Fixes:
+
+* Fixed empty line at the end of help pages as clickable example. (#1194)
+* Avoid code highlighting in DESCRIPTION files in help viewer as code examples. (#1199)
+* Saving a rmd file no longer triggers the preview to refresh if it is still rendering. (#1219)
+
+## [2.5.3](https://github.com/REditorSupport/vscode-R/releases/tag/v2.5.3)
+
+Enhancements:
+
+* Reload help pages on refresh. (#1188)
+* Upgrade to vscode-languageclient 8.0.2. (#1173)
+
+Fixes:
+
+* Remove `encoding` from knitting so that renderers that do not have an encoding parameter (e.g. `quarto::quarto_render()`) now work properly. (#1167)
+
+## [2.5.2](https://github.com/REditorSupport/vscode-R/releases/tag/v2.5.2)
+
+New Features:
+
+* R help viewer now highlights code sections on hover and user can click the code to copy it to the clipboard, or press `ctrl+click` (Windows and Linux) or `cmd+click` (macOS) to send it to R terminal by default. A new setting `r.helpPanel.clickCodeExamples` is added to allow customizing the click behavior. (#1138)
+* A new command `Create .lintr` is added. (#1112)
+
+Enhancements:
+
+* R and Rmd files are added to `Create: New File`. (#1119)
+* Improved data viewer column resizing. (#1121)
+
+Fixes:
+
+* Hide environment values in R Markdown preview to prevent accidental deletion (#1117)
+* Opening and closing a list item in the workspace viewer treeview now works properly. (#1150)
+
 ## [2.5.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.5.0)
 
 Announcement:

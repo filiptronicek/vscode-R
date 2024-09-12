@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "R Extension for Visual Studio Code",
-  "version": "2.5.0",
+  "version": "2.8.4",
   "author": "REditorSupport",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "REditorSupport",
@@ -26,46 +26,14 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.60.0"
+    "vscode": "^1.75.0"
   },
   "activationEvents": [
-    "onLanguage:r",
-    "onLanguage:rd",
-    "onLanguage:rmd",
-    "onLanguage:debian-control.r",
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
-    "onCommand:r.createRTerm",
-    "onCommand:r.runSource",
-    "onCommand:r.knitRmd",
-    "onCommand:r.knitRmdToPdf",
-    "onCommand:r.knitRmdToHtml",
-    "onCommand:r.knitRmdToAll",
-    "onCommand:r.runSourcewithEcho",
-    "onCommand:r.runSelection",
     "onCommand:r.runSelectionInActiveTerm",
-    "onCommand:r.selectCurrentChunk",
-    "onCommand:r.runCurrentChunk",
-    "onCommand:r.runPreviousChunk",
-    "onCommand:r.runNextChunk",
-    "onCommand:r.runAboveChunks",
-    "onCommand:r.runCurrentAndBelowChunks",
-    "onCommand:r.runBelowChunks",
-    "onCommand:r.runAllChunks",
-    "onCommand:r.goToPreviousChunk",
-    "onCommand:r.goToNextChunk",
-    "onCommand:r.createGitignore",
-    "onCommand:r.runCommandWithSelectionOrWord",
-    "onCommand:r.runCommandWithEditorPath",
-    "onCommand:r.runCommand",
-    "onCommand:r.showHelp",
-    "onCommand:r.helpPanel.back",
-    "onCommand:r.helpPanel.forward",
-    "onCommand:r.helpPanel.openForSelection",
-    "onCommand:r.plot.openUrl",
-    "onWebviewPanel:rhelp",
-    "onTerminalProfile:r.terminal-profile"
+    "onWebviewPanel:rhelp"
   ],
-  "main": "./out/extension",
+  "main": "./dist/extension",
   "contributes": {
     "terminal": {
       "profiles": [
@@ -90,8 +58,7 @@
           "id": "workspaceViewer",
           "name": "Workspace",
           "icon": "./images/Rlogo.svg",
-          "contextualTitle": "R",
-          "when": "r.WorkspaceViewer:show"
+          "contextualTitle": "R"
         },
         {
           "id": "rHelpPages",
@@ -113,7 +80,8 @@
     "viewsWelcome": [
       {
         "view": "workspaceViewer",
-        "contents": "R workspace is empty."
+        "when": "!r.WorkspaceViewer:show",
+        "contents": "R workspace viewer requires that the [session watcher be enabled](https://github.com/REditorSupport/vscode-R/wiki/R-Session-watcher)."
       },
       {
         "view": "rHelpPages",
@@ -181,6 +149,26 @@
           ".lintr"
         ],
         "configuration": "./language/dcf-configuration.json"
+      },
+      {
+        "id": "namespace.r",
+        "aliases": [
+          "R NAMESPACE"
+        ],
+        "filenames": [
+          "NAMESPACE"
+        ],
+        "configuration": "./language/rnamespace-configuration.json"
+      },
+      {
+        "id": "buildignore.r",
+        "aliases": [
+          "R ignore"
+        ],
+        "filenames": [
+          ".Rbuildignore"
+        ],
+        "configuration": "./language/rbuildignore-configuration.json"
       }
     ],
     "snippets": [
@@ -285,6 +273,16 @@
         "injectTo": [
           "source.cpp"
         ]
+      },
+      {
+        "language": "namespace.r",
+        "scopeName": "namespace.r",
+        "path": "./syntax/rnamespace.json"
+      },
+      {
+        "language": "buildignore.r",
+        "scopeName": "buildignore.r",
+        "path": "./syntax/rbuildignore.json"
       }
     ],
     "commands": [
@@ -292,7 +290,8 @@
         "command": "r.workspaceViewer.refreshEntry",
         "title": "Manual Refresh",
         "icon": "$(refresh)",
-        "category": "R Workspace Viewer"
+        "category": "R Workspace Viewer",
+        "enablement": "rSessionActive"
       },
       {
         "command": "r.workspaceViewer.view",
@@ -304,7 +303,8 @@
         "command": "r.workspaceViewer.clear",
         "title": "Clear environment",
         "icon": "$(clear-all)",
-        "category": "R Workspace Viewer"
+        "category": "R Workspace Viewer",
+        "enablement": "rSessionActive"
       },
       {
         "command": "r.workspaceViewer.remove",
@@ -316,7 +316,8 @@
         "command": "r.workspaceViewer.save",
         "title": "Save workspace",
         "icon": "$(save)",
-        "category": "R Workspace Viewer"
+        "category": "R Workspace Viewer",
+        "enablement": "rSessionActive"
       },
       {
         "command": "r.workspaceViewer.load",
@@ -420,9 +421,19 @@
         "command": "r.names"
       },
       {
+        "title": "View selected object",
+        "category": "R",
+        "command": "r.view"
+      },
+      {
         "title": "Create gitignore",
         "category": "R",
         "command": "r.createGitignore"
+      },
+      {
+        "title": "Create .lintr to the workspace",
+        "category": "R",
+        "command": "r.createLintrConfig"
       },
       {
         "title": "Preview Dataframe",
@@ -470,6 +481,11 @@
         "command": "r.test"
       },
       {
+        "title": "Generate C/C++ Configuration",
+        "category": "R Package",
+        "command": "r.generateCCppProperties"
+      },
+      {
         "title": "Attach Active Terminal",
         "category": "R",
         "command": "r.attachActive"
@@ -515,6 +531,11 @@
         "command": "r.runCurrentChunk"
       },
       {
+        "title": "Run Current Chunk and Move to Next Chunk",
+        "category": "R",
+        "command": "r.runCurrentChunkAndMove"
+      },
+      {
         "title": "Run Previous Chunk",
         "category": "R",
         "command": "r.runPreviousChunk"
@@ -558,6 +579,18 @@
         "title": "New Draft",
         "category": "R Markdown",
         "command": "r.rmarkdown.newDraft"
+      },
+      {
+        "title": "R Markdown (rmd)",
+        "category": "R Markdown",
+        "when": false,
+        "command": "r.rmarkdown.newFileDraft"
+      },
+      {
+        "title": "R Document (r)",
+        "category": "R",
+        "when": false,
+        "command": "r.newFileDocument"
       },
       {
         "command": "r.rmarkdown.setKnitDirectory",
@@ -636,6 +669,7 @@
         "command": "r.helpPanel.openExternal",
         "title": "Open in external browser",
         "category": "R Help Panel",
+        "enablement": "r.helpPanel.canOpenExternal",
         "icon": "$(link-external)"
       },
       {
@@ -873,13 +907,13 @@
         "command": "r.runCurrentChunk",
         "key": "Ctrl+shift+enter",
         "mac": "cmd+shift+enter",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
+        "when": "editorTextFocus && (editorLangId == 'rmd' || editorLangId == 'r')"
       },
       {
         "command": "r.runAboveChunks",
         "key": "Ctrl+alt+p",
         "mac": "cmd+alt+p",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
+        "when": "editorTextFocus && (editorLangId == 'rmd' || editorLangId == 'r')"
       },
       {
         "command": "r.runSource",
@@ -925,6 +959,100 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "r.workspaceViewer.view",
+          "when": "false"
+        },
+        {
+          "command": "r.workspaceViewer.remove",
+          "when": "false"
+        },
+        {
+          "command": "r.workspaceViewer.package.showQuickPick",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.back",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.forward",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.openExternal",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.searchPackage",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.openInNewPanel",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.clearCache",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.filterPackages",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.removeFromFavorites",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.addToFavorites",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.showAllPackages",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.showOnlyFavorites",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.removePackage",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.updateInstalledPackages",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.updatePackage",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.installPackages",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.showQuickPick",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.summarizeTopics",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.unsummarizeTopics",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.openForPath",
+          "when": "false"
+        },
+        {
+          "command": "r.liveShare.toggle",
+          "when": "false"
+        }
+      ],
       "editor/title/run": [
         {
           "when": "editorLangId == r",
@@ -1189,22 +1317,22 @@
         {
           "command": "r.workspaceViewer.load",
           "group": "navigation@0",
-          "when": "view == workspaceViewer && !r.liveShare:isGuest"
+          "when": "r.WorkspaceViewer:show && view == workspaceViewer && !r.liveShare:isGuest"
         },
         {
           "command": "r.workspaceViewer.save",
           "group": "navigation@1",
-          "when": "view == workspaceViewer && !r.liveShare:isGuest"
+          "when": "r.WorkspaceViewer:show && view == workspaceViewer && !r.liveShare:isGuest"
         },
         {
           "command": "r.workspaceViewer.clear",
           "group": "navigation@2",
-          "when": "view == workspaceViewer"
+          "when": "r.WorkspaceViewer:show && view == workspaceViewer"
         },
         {
           "command": "r.workspaceViewer.refreshEntry",
           "group": "navigation@3",
-          "when": "view == workspaceViewer"
+          "when": "r.WorkspaceViewer:show && view == workspaceViewer"
         },
         {
           "command": "r.helpPanel.showQuickPick",
@@ -1237,6 +1365,16 @@
         {
           "command": "r.knitRmdToAll"
         }
+      ],
+      "file/newFile": [
+        {
+          "group": "R",
+          "command": "r.rmarkdown.newFileDraft"
+        },
+        {
+          "group": "R",
+          "command": "r.newFileDocument"
+        }
       ]
     },
     "submenus": [
@@ -1253,32 +1391,32 @@
         "r.rpath.windows": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable for Windows. Must be \"vanilla\" R, not radian etc.!"
+          "markdownDescription": "Path to an R executable to launch R background processes (Windows). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rpath.mac": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable for macOS. Must be \"vanilla\" R, not radian etc.!"
+          "markdownDescription": "Path to an R executable to launch R background processes (macOS). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rpath.linux": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable for Linux. Must be \"vanilla\" R, not radian etc.!"
+          "markdownDescription": "Path to an R executable to launch R background processes (Linux). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rterm.windows": {
           "type": "string",
           "default": "",
-          "description": "R path for Windows. Can also be radian etc."
+          "markdownDescription": "R path for interactive terminals (Windows). Can also be radian etc. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rterm.mac": {
           "type": "string",
           "default": "",
-          "description": "R path for macOS. Can also be radian etc."
+          "markdownDescription": "R path for interactive terminals (macOS). Can also be radian etc. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rterm.linux": {
           "type": "string",
           "default": "",
-          "description": "R path for Linux. Can also be radian etc."
+          "markdownDescription": "R path for interactive terminals (Linux). Can also be radian etc. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rterm.option": {
           "type": "array",
@@ -1298,6 +1436,11 @@
           },
           "default": [],
           "markdownDescription": "Additional library paths to launch R background processes (R languageserver, help server, etc.). These paths will be appended to `.libPaths()` on process startup. It could be useful for projects with [renv](https://rstudio.github.io/renv/index.html) enabled."
+        },
+        "r.useRenvLibPath": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Use renv library paths to launch R background processes (R languageserver, help server, etc.)."
         },
         "r.lsp.enabled": {
           "type": "boolean",
@@ -1337,6 +1480,11 @@
           "default": false,
           "description": "Use STDIO connection instead of TCP. (Unix/macOS users only)"
         },
+        "r.lsp.multiServer": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Use multiple language servers for [multi-root workspaces](https://code.visualstudio.com/docs/editor/multi-root-workspaces). If disabled, only one language server will be used to handle all requests from all workspaces and files."
+        },
         "r.rmarkdown.codeLensCommands": {
           "type": "array",
           "items": {
@@ -1344,6 +1492,7 @@
             "enum": [
               "r.selectCurrentChunk",
               "r.runCurrentChunk",
+              "r.runCurrentChunkAndMove",
               "r.runAboveChunks",
               "r.runCurrentAndBelowChunks",
               "r.runBelowChunks",
@@ -1363,7 +1512,7 @@
         "r.rmarkdown.enableCodeLens": {
           "type": "boolean",
           "default": true,
-          "description": "Enable RMarkdown CodeLens, which are inline commands/buttons e.g. 'Run Chunk | Run Above' shown on the first line of each code chunk.\n\n- Click the buttons to run commands.\n- Hover on the buttons to show tooltips.\n- CodeLens commands are customizable via settings UI (Rmarkdown: Code Lens commands) or settings.json `r.rmarkdown.codeLensCommands`"
+          "markdownDescription": "Enable RMarkdown CodeLens, which are inline commands/buttons e.g. 'Run Chunk | Run Above' shown on the first line of each code chunk.\n\n- Click the buttons to run commands.\n- Hover on the buttons to show tooltips.\n- CodeLens commands are customizable via `#r.rmarkdown.codeLensCommands#` or settings.json `r.rmarkdown.codeLensCommands`"
         },
         "r.rmarkdown.chunkBackgroundColor": {
           "type": "string",
@@ -1374,6 +1523,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Enable automatic refresh of R Markdown preview on file update."
+        },
+        "r.rmarkdown.preview.zoom": {
+          "type": "number",
+          "default": 1,
+          "markdownDescription": "Controls the zoom of the R Markdown preview."
         },
         "r.rmarkdown.knit.useBackgroundProcess": {
           "type": "boolean",
@@ -1430,6 +1584,16 @@
           ],
           "default": "None"
         },
+        "r.helpPanel.previewLocalPackages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "."
+          ],
+          "markdownDescription": "Which local directories to try for local help pages previewer. Set to `[]` to disable."
+        },
         "r.helpPanel.rpath": {
           "type": "string",
           "default": "",
@@ -1442,10 +1606,69 @@
           "default": true,
           "markdownDescription": "Show links to matching help pages in hover"
         },
+        "r.helpPanel.clickCodeExamples": {
+          "type": "object",
+          "markdownDescription": "What happens when clicking code examples on help pages. Might require restarting to take effect.",
+          "default": {
+            "Click": "Copy",
+            "Ctrl+Click": "Run",
+            "Shift+Click": "Ignore"
+          },
+          "properties": {
+            "Click": {
+              "type": "string",
+              "default": "Copy",
+              "enum": [
+                "Ignore",
+                "Copy",
+                "Run"
+              ],
+              "enumDescriptions": [
+                "Do nothing",
+                "Copy the code to the clipboard",
+                "Run the code in the terminal"
+              ]
+            },
+            "Ctrl+Click": {
+              "type": "string",
+              "default": "Run",
+              "enum": [
+                "Ignore",
+                "Copy",
+                "Run"
+              ],
+              "enumDescriptions": [
+                "Do nothing",
+                "Copy the code to the clipboard",
+                "Run the code in the terminal"
+              ]
+            },
+            "Shift+Click": {
+              "type": "string",
+              "default": "Ignore",
+              "enum": [
+                "Ignore",
+                "Copy",
+                "Run"
+              ],
+              "enumDescriptions": [
+                "Do nothing",
+                "Copy the code to the clipboard",
+                "Run the code in the terminal"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
         "r.source.encoding": {
           "type": "string",
           "default": "UTF-8",
-          "description": "An optional encoding to pass to R when executing the file, i.e. 'source(FILE, encoding=ENCODING)'."
+          "markdownDescription": "An optional encoding to pass to R when executing the file, i.e. `source(FILE, encoding=ENCODING)`."
+        },
+        "r.source.echo": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Should the file be executed with echo option set to TRUE by default, i.e. `source(FILE, echo=TRUE)`?"
         },
         "r.source.focus": {
           "type": "string",
@@ -1455,7 +1678,12 @@
             "terminal",
             "none"
           ],
-          "description": "What to show/focus after running code. Set to 'editor' or 'terminal' to show the terminal. Set to 'none' to not show the terminal."
+          "enumDescriptions": [
+            "Focus editor when sending code to terminal",
+            "Focus terminal when sending code to terminal",
+            "Do not show terminal when sending code to terminal"
+          ],
+          "description": "What to show/focus after sending code to terminal."
         },
         "r.alwaysUseActiveTerminal": {
           "type": "boolean",
@@ -1465,12 +1693,22 @@
         "r.bracketedPaste": {
           "type": "boolean",
           "default": false,
-          "description": "Use bracketed paste mode when sending code to console. Enable for Radian console."
+          "markdownDescription": "Use bracketed paste mode when sending code to terminal. Enable for [radian](https://github.com/randy3k/radian) console."
+        },
+        "r.removeLeadingComments": {
+          "type": "boolean",
+          "default": false,
+          "description": "Remove leading comments when sending code to terminal."
         },
         "r.sessionWatcher": {
           "type": "boolean",
           "default": true,
           "description": "Enable R session watcher. Required for workspace viewer and most features to work with an R session. Restart required to take effect."
+        },
+        "r.session.useWebServer": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable experimental use of web server in the R session to handle session requests from the extension. Changes the option `vsc.use_webserver` in R. Requires `#r.sessionWatcher#` to be set to `true`. Requires the `httpuv` R package."
         },
         "r.session.watchGlobalEnvironment": {
           "type": "boolean",
@@ -1599,7 +1837,7 @@
             },
             "view": {
               "type": "string",
-              "description": "Which view column to show the WebView triggered by View()? \n\nChanges the option 'vsc.plot' in R.",
+              "description": "Which view column to show the WebView triggered by View()? \n\nChanges the option 'vsc.view' in R.",
               "enum": [
                 "Two",
                 "Active",
@@ -1637,7 +1875,7 @@
         "r.rtermSendDelay": {
           "type": "integer",
           "default": 8,
-          "description": "Delay in milliseconds before sending each line to rterm (only applies if r.bracketedPaste is false)"
+          "markdownDescription": "Delay in milliseconds before sending each line to rterm. Requires `#r.bracketedPaste#` to be `false`."
         },
         "r.workspaceViewer.showObjectSize": {
           "type": "boolean",
@@ -1657,7 +1895,7 @@
         "r.liveShare.timeout": {
           "type": "integer",
           "default": 10000,
-          "description": "Time in milliseconds before aborting attempt to connect to Live Share API"
+          "description": "Time in milliseconds before aborting attempt to connect to Live Share API."
         },
         "r.liveShare.defaults.commandForward": {
           "type": "boolean",
@@ -1673,6 +1911,39 @@
           "type": "boolean",
           "default": false,
           "description": "Default boolean value for automatically sharing R browser ports with guests."
+        },
+        "r.plot.devArgs": {
+          "type": "object",
+          "markdownDescription": "The arguments for the png device to replay user graphics to show in VSCode. Requires `#r.plot.useHttpgd#` to be set to `false`. \n\nChanges the option `vsc.dev.args` in R.",
+          "default": {
+            "width": 800,
+            "height": 1200
+          },
+          "properties": {
+            "width": {
+              "type": "number",
+              "description": "Width of the graphic device.",
+              "default": 480
+            },
+            "height": {
+              "type": "number",
+              "description": "Height of the graphic device.",
+              "default": 480
+            },
+            "units": {
+              "type": "string",
+              "default": "px"
+            },
+            "pointsize": {
+              "type": "number",
+              "default": 12
+            },
+            "bg": {
+              "type": "string",
+              "default": "white"
+            }
+          },
+          "additionalProperties": false
         },
         "r.plot.useHttpgd": {
           "type": "boolean",
@@ -1690,7 +1961,7 @@
             "Match background and primary stroke color to the current color theme (Or apply custom CSS overwrites, if specified in `#r.plot.customStyleOverwrites#`)",
             "Use original colors"
           ],
-          "markdownDescription": "Which color theme to use when launching the plot viewer."
+          "markdownDescription": "Which color theme to use when launching the httpgd plot viewer."
         },
         "r.plot.defaults.plotPreviewLayout": {
           "type": "string",
@@ -1710,7 +1981,7 @@
         "r.plot.defaults.fullWindowMode": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Whether to use full window mode when launching the plot viewer."
+          "markdownDescription": "Whether to use full window mode when launching the httpgd plot viewer."
         },
         "r.plot.timing.resizeInterval": {
           "type": "number",
@@ -1727,6 +1998,11 @@
           "default": "",
           "markdownDescription": "Path to a custom CSS file to be used when `#r.plot.defaults.colorTheme#` is `vscode`. Replaces the default CSS overwrites!"
         }
+      }
+    },
+    "configurationDefaults": {
+      "[r]": {
+        "editor.wordSeparators": "`~!@#$%^&*()-=+[{]}\\|;:'\",<>/"
       }
     },
     "taskDefinitions": [
@@ -1785,7 +2061,7 @@
         ],
         "pattern": [
           {
-            "regexp": "^(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):(\\d+)\\):\\s(.*)",
+            "regexp": "^[-─ ]*(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):?(\\d+)?\\):\\s(.*)",
             "file": 2,
             "line": 3,
             "column": 4,
@@ -1800,68 +2076,57 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
-    "compile": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
-    "watch": "tsc -p . --watch",
+    "vscode:prepublish": "tsc -p ./html/help && tsc -p ./html/httpgd && webpack --mode production",
+    "compile": "tsc -p ./html/help && tsc -p ./html/httpgd && webpack --mode none",
+    "watch": "webpack --mode none --watch",
+    "watchHelp": "tsc -p ./html/help --watch",
+    "watchHttpgd": "tsc -p ./html/httpgd --watch",
     "pretest": "tsc -p ./",
     "test": "node ./out/test/runTest.js",
     "lint": "eslint src --ext ts"
-  },
-  "withWebpack": {
-    "scripts": {
-      "vscode:prepublish": "webpack --mode production",
-      "compile": "webpack --mode none",
-      "watch": "webpack --mode none --watch",
-      "pretest": "tsc -p ./",
-      "test": "node ./out/test/runTest.js",
-      "lint": "eslint src --ext ts"
-    },
-    "main": "./dist/extension"
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.29",
     "@types/ejs": "^3.0.6",
     "@types/express": "^4.17.12",
     "@types/fs-extra": "^9.0.11",
+    "@types/glob": "^8.0.0",
     "@types/js-yaml": "^4.0.2",
     "@types/mocha": "^8.2.2",
-    "@types/node": "^14.17.3",
+    "@types/node": "^18.17.1",
     "@types/node-fetch": "^2.5.10",
-    "@types/showdown": "^1.9.3",
-    "@types/vscode": "^1.60.0",
+    "@types/sinon": "^10.0.13",
+    "@types/vscode": "^1.75.0",
     "@types/winreg": "^1.2.31",
-    "@types/ws": "^7.4.4",
-    "@typescript-eslint/eslint-plugin": "4.25.0",
-    "@typescript-eslint/parser": "4.25.0",
+    "@typescript-eslint/eslint-plugin": "^5.30.0",
+    "@typescript-eslint/parser": "^5.30.0",
+    "@vscode/test-electron": "^2.2.3",
+    "@types/highlight.js": "^10.1.0",
     "copy-webpack-plugin": "^9.0.0",
     "devreplay": "^1.9.31",
     "eslint": "^7.28.0",
     "eslint-plugin-jsdoc": "^35.1.3",
-    "mocha": "^8.4.0",
-    "ts-loader": "^9.2.3",
-    "typescript": "^4.3.2",
-    "vscode-test": "^1.5.2",
-    "webpack": "^5.38.1",
-    "webpack-cli": "^4.7.2",
-    "yamljs": "^0.3.0"
+    "mocha": "^9.1.0",
+    "sinon": "^15.0.1",
+    "ts-loader": "^9.3.1",
+    "typescript": "^4.7.2",
+    "webpack": "^5.76.0",
+    "webpack-cli": "^4.7.2"
   },
   "dependencies": {
-    "ag-grid-community": "^27.1.0",
-    "cheerio": "1.0.0-rc.10",
+    "ag-grid-community": "^31.3.2",
+    "cheerio": "1.0.0-rc.12",
     "crypto": "^1.0.1",
-    "ejs": "^3.1.7",
+    "ejs": "^3.1.10",
     "fs-extra": "^10.0.0",
-    "highlight.js": "^10.7.3",
-    "httpgd": "^0.1.6",
-    "jquery": "^3.6.0",
-    "jquery.json-viewer": "^1.4.0",
+    "highlight.js": "^11.9.0",
+    "httpgd": "0.1.6",
+    "jquery": "^3.7.1",
+    "jquery.json-viewer": "^1.5.0",
     "js-yaml": "^4.1.0",
     "node-fetch": "^2.6.7",
-    "popper.js": "^1.16.1",
-    "showdown": "^1.9.1",
-    "vscode-languageclient": "^7.0.0",
+    "vscode-languageclient": "^9.0.1",
     "vsls": "^1.0.4753",
-    "winreg": "^1.2.4",
-    "ws": "^7.4.6"
+    "winreg": "^1.2.4"
   }
 }

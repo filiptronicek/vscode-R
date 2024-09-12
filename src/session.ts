@@ -1,20 +1,19 @@
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 'use strict';
 
 import * as fs from 'fs-extra';
 import * as os from 'os';
 import * as path from 'path';
+import { Agent } from 'http';
+import fetch from 'node-fetch';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
-import { config, readContent, UriIcon } from './util';
+import { config, readContent, setContext, UriIcon } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
-import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext } from './extension';
+import { IRequest } from './liveShare/shareSession';
+import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext, sessionStatusBarItem } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
 
 export interface GlobalEnv {
@@ -36,6 +35,12 @@ export interface WorkspaceData {
     globalenv: GlobalEnv;
 }
 
+export interface SessionServer {
+    host: string;
+    port: number;
+    token: string;
+}
+
 export let workspaceData: WorkspaceData;
 let resDir: string;
 export let requestFile: string;
@@ -46,7 +51,10 @@ export let sessionDir: string;
 export let workingDir: string;
 let rVer: string;
 let pid: string;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let info: any;
+const httpAgent = new Agent({ keepAlive: true });
+export let server: SessionServer | undefined;
 export let workspaceFile: string;
 let workspaceLockFile: string;
 let workspaceTimeStamp: number;
@@ -55,9 +63,9 @@ let plotLockFile: string;
 let plotTimeStamp: number;
 let workspaceWatcher: FSWatcher;
 let plotWatcher: FSWatcher;
-let activeBrowserPanel: WebviewPanel;
-let activeBrowserUri: Uri;
-let activeBrowserExternalUri: Uri;
+let activeBrowserPanel: WebviewPanel | undefined;
+let activeBrowserUri: Uri | undefined;
+let activeBrowserExternalUri: Uri | undefined;
 
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
@@ -95,7 +103,7 @@ export function attachActive(): void {
         console.info('[attachActive]');
         void runTextInTerm('.vsc.attach()');
         if (isLiveShare() && shareWorkspace) {
-            rHostService.notifyRequest(requestFile, true);
+            rHostService?.notifyRequest(requestFile, true);
         }
     } else {
         void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
@@ -181,11 +189,11 @@ async function updatePlot() {
             void commands.executeCommand('vscode.open', Uri.file(plotFile), {
                 preserveFocus: true,
                 preview: true,
-                viewColumn: ViewColumn[config().get<string>('session.viewers.viewColumn.plot')],
+                viewColumn: ViewColumn[(config().get<string>('session.viewers.viewColumn.plot') || 'Two') as keyof typeof ViewColumn],
             });
             console.info('[updatePlot] Done');
             if (isLiveShare()) {
-                void rHostService.notifyPlot(plotFile);
+                void rHostService?.notifyPlot(plotFile);
             }
         } else {
             console.info('[updatePlot] File not found');
@@ -202,11 +210,11 @@ async function updateWorkspace() {
         workspaceTimeStamp = newTimeStamp;
         if (fs.existsSync(workspaceFile)) {
             const content = await fs.readFile(workspaceFile, 'utf8');
-            workspaceData = JSON.parse(content);
+            workspaceData = JSON.parse(content) as WorkspaceData;
             void rWorkspace?.refresh();
             console.info('[updateWorkspace] Done');
             if (isLiveShare()) {
-                rHostService.notifyWorkspace(workspaceData);
+                rHostService?.notifyWorkspace(workspaceData);
             }
         } else {
             console.info('[updateWorkspace] File not found');
@@ -226,7 +234,7 @@ export async function showBrowser(url: string, title: string, viewer: string | b
             title,
             {
                 preserveFocus: true,
-                viewColumn: ViewColumn[String(viewer)],
+                viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn],
             },
             {
                 enableFindWidget: true,
@@ -268,15 +276,15 @@ function getBrowserHtml(uri: Uri): string {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
     html, body {
         height: 100%;
         padding: 0;
         overflow: hidden;
     }
-  </style>
+    </style>
 </head>
 <body>
     <iframe src="${uri.toString(true)}" width="100%" height="100%" frameborder="0" />
@@ -289,7 +297,9 @@ export function refreshBrowser(): void {
     console.log('[refreshBrowser]');
     if (activeBrowserPanel) {
         activeBrowserPanel.webview.html = '';
-        activeBrowserPanel.webview.html = getBrowserHtml(activeBrowserExternalUri);
+        if (activeBrowserExternalUri) {
+            activeBrowserPanel.webview.html = getBrowserHtml(activeBrowserExternalUri);
+        }
     }
 }
 
@@ -310,7 +320,7 @@ export async function showWebView(file: string, title: string, viewer: string | 
         const panel = window.createWebviewPanel('webview', title,
             {
                 preserveFocus: true,
-                viewColumn: ViewColumn[String(viewer)],
+                viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn],
             },
             {
                 enableScripts: true,
@@ -335,7 +345,7 @@ export async function showDataView(source: string, type: string, title: string, 
         const panel = window.createWebviewPanel('dataview', title,
             {
                 preserveFocus: true,
-                viewColumn: ViewColumn[viewer],
+                viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
             },
             {
                 enableScripts: true,
@@ -350,7 +360,7 @@ export async function showDataView(source: string, type: string, title: string, 
         const panel = window.createWebviewPanel('dataview', title,
             {
                 preserveFocus: true,
-                viewColumn: ViewColumn[viewer],
+                viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
             },
             {
                 enableScripts: true,
@@ -363,13 +373,15 @@ export async function showDataView(source: string, type: string, title: string, 
         panel.webview.html = content;
     } else {
         if (isGuestSession) {
-            const fileContent = await rGuestService.requestFileContent(file, 'utf8');
-            await openVirtualDoc(file, fileContent, true, true, ViewColumn[viewer]);
+            const fileContent = await rGuestService?.requestFileContent(file, 'utf8');
+            if (fileContent) {
+                await openVirtualDoc(file, fileContent, true, true, ViewColumn[viewer as keyof typeof ViewColumn]);
+            }
         } else {
             await commands.executeCommand('vscode.open', Uri.file(file), {
                 preserveFocus: true,
                 preview: true,
-                viewColumn: ViewColumn[viewer],
+                viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
             });
         }
     }
@@ -378,15 +390,15 @@ export async function showDataView(source: string, type: string, title: string, 
 
 export async function getTableHtml(webview: Webview, file: string): Promise<string> {
     resDir = isGuestSession ? guestResDir : resDir;
-    const pageSize = config().get<number>('session.data.pageSize');
+    const pageSize = config().get<number>('session.data.pageSize', 500);
     const content = await readContent(file, 'utf8');
     return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style media="only screen">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style media="only screen">
     html, body {
         height: 100%;
         width: 100%;
@@ -477,12 +489,11 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     [class*="vscode"] input[class^=ag-] {
         border-color: var(--vscode-notificationCenter-border) !important;
     }
-  </style>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham.min.css'))))}" rel="stylesheet">
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham-dark.min.css'))))}" rel="stylesheet">
-  <script>
+    </style>
+    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
+    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
+    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham.min.css'))))}" rel="stylesheet">
+    <script>
     const dateFilterParams = {
         browserDatePicker: true,
         comparator: function (filterLocalDateAtMidnight, cellValue) {
@@ -507,8 +518,10 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             sortable: true,
             resizable: true,
             filter: true,
+            width: 100,
+            minWidth: 50,
             filterParams: {
-            buttons: ['reset', 'apply']
+                buttons: ['reset', 'apply']
             }
         },
         columnDefs: data.columns,
@@ -519,11 +532,11 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
         enableCellTextSelection: true,
         ensureDomOrder: true,
         tooltipShowDelay: 100,
-        onGridReady: function (params) {
-            gridOptions.api.sizeColumnsToFit();
-            autoSizeAll(false);
-        }
+        onFirstDataRendered: onFirstDataRendered
     };
+    function onFirstDataRendered(params) {
+        gridOptions.columnApi.autoSizeAllColumns(false);
+    }
     function updateTheme() {
         const gridDiv = document.querySelector('#myGrid');
         if (document.body.classList.contains('vscode-light')) {
@@ -531,13 +544,6 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
         } else {
             gridDiv.className = 'ag-theme-balham-dark';
         }
-    }
-    function autoSizeAll(skipHeader) {
-        var allColumnIds = [];
-        gridOptions.columnApi.getAllColumns().forEach(function (column) {
-            allColumnIds.push(column.colId);
-        });
-        gridOptions.columnApi.autoSizeColumns(allColumnIds, skipHeader);
     }
     document.addEventListener('DOMContentLoaded', () => {
         gridOptions.columnDefs.forEach(function(column) {
@@ -560,10 +566,10 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             characterData: false
         });
     }
-  </script>
+    </script>
 </head>
 <body onload='onload()'>
-  <div id="myGrid" style="height: 100%;"></div>
+    <div id="myGrid" style="height: 100%;"></div>
 </body>
 </html>
 `;
@@ -577,12 +583,12 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
 <!doctype HTML>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.min.js'))))}"></script>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.js'))))}"></script>
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.css'))))}" rel="stylesheet">
-  <style type="text/css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.min.js'))))}"></script>
+    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.js'))))}"></script>
+    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.css'))))}" rel="stylesheet">
+    <style type="text/css">
     body {
         color: var(--vscode-editor-foreground);
         background-color: var(--vscode-editor-background);
@@ -621,8 +627,8 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
     a.json-placeholder {
         color: var(--vscode-input-placeholderForeground);
     }
-  </style>
-  <script>
+    </style>
+    <script>
     var data = ${String(content)};
     $(document).ready(function() {
       var options = {
@@ -633,10 +639,10 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
       };
       $("#json-renderer").jsonViewer(data, options);
     });
-  </script>
+    </script>
 </head>
 <body>
-  <pre id="json-renderer"></pre>
+    <pre id="json-renderer"></pre>
 </body>
 </html>
 `;
@@ -644,7 +650,7 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
 
 export async function getWebviewHtml(webview: Webview, file: string, title: string, dir: string, webviewDir: string): Promise<string> {
     const observerPath = Uri.file(path.join(webviewDir, 'observer.js'));
-    const body = (await readContent(file, 'utf8')).toString()
+    const body = (await readContent(file, 'utf8') || '').toString()
         .replace(/<(\w+)(.*)\s+(href|src)="(?!\w+:)/g,
             `<$1 $2 $3="${String(webview.asWebviewUri(Uri.file(dir)))}/`);
 
@@ -656,6 +662,7 @@ export async function getWebviewHtml(webview: Webview, file: string, title: stri
         default-src https: data: filesystem:;
         style-src https: data: filesystem: 'unsafe-inline';
         script-src https: data: filesystem: 'unsafe-inline' 'unsafe-eval';
+        worker-src https: data: filesystem: blob:;
     `;
 
     return `
@@ -729,21 +736,27 @@ export async function writeSuccessResponse(responseSessionDir: string): Promise<
     await writeResponse({ result: true }, responseSessionDir);
 }
 
+type ISessionRequest = {
+    plot_url?: string,
+    server?: SessionServer
+} & IRequest;
+
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
     console.info('[updateRequest] Started');
     console.info(`[updateRequest] requestFile: ${requestFile}`);
+
     const lockContent = await fs.readFile(requestLockFile, 'utf8');
     const newTimeStamp = Number.parseFloat(lockContent);
     if (newTimeStamp !== requestTimeStamp) {
         requestTimeStamp = newTimeStamp;
         const requestContent = await fs.readFile(requestFile, 'utf8');
         console.info(`[updateRequest] request: ${requestContent}`);
-        const request = JSON.parse(requestContent);
-        if (isFromWorkspace(request.wd)) {
+        const request = JSON.parse(requestContent) as ISessionRequest;
+        if (request.wd && isFromWorkspace(request.wd)) {
             if (request.uuid === null || request.uuid === undefined || request.uuid === UUID) {
                 switch (request.command) {
                     case 'help': {
-                        if (globalRHelp) {
+                        if (globalRHelp && request.requestPath) {
                             console.log(request.requestPath);
                             await globalRHelp.showHelpForPath(request.requestPath, request.viewer);
                         }
@@ -756,6 +769,9 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         break;
                     }
                     case 'attach': {
+                        if (!request.tempdir || !request.wd) {
+                            return;
+                        }
                         rVer = String(request.version);
                         pid = String(request.pid);
                         info = request.info;
@@ -763,30 +779,54 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         workingDir = request.wd;
                         console.info(`[updateRequest] attach PID: ${pid}`);
                         sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
-                        sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
+                        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-unsafe-member-access
+                        sessionStatusBarItem.tooltip = `${info?.version}\nProcess ID: ${pid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to active terminal.`;
                         sessionStatusBarItem.show();
                         updateSessionWatcher();
+
+                        if (request.server) {
+                            server = request.server;
+                        }
+
                         purgeAddinPickerItems();
+                        await setContext('rSessionActive', true);
                         if (request.plot_url) {
                             await globalHttpgdManager?.showViewer(request.plot_url);
+                        }
+                        void watchProcess(pid).then((v: string) => {
+                            void cleanupSession(v);
+                        });
+                        break;
+                    }
+                    case 'detach': {
+                        if (request.pid) {
+                            await cleanupSession(request.pid);
                         }
                         break;
                     }
                     case 'browser': {
-                        await showBrowser(request.url, request.title, request.viewer);
+                        if (request.url && request.title && request.viewer !== undefined) {
+                            await showBrowser(request.url, request.title, request.viewer);
+                        }
                         break;
                     }
                     case 'webview': {
-                        await showWebView(request.file, request.title, request.viewer);
+                        if (request.file && request.title && request.viewer !== undefined) {
+                            await showWebView(request.file, request.title, request.viewer);
+                        }
                         break;
                     }
                     case 'dataview': {
-                        await showDataView(request.source,
-                            request.type, request.title, request.file, request.viewer);
+                        if (request.source && request.type && request.file && request.title && request.viewer !== undefined) {
+                            await showDataView(request.source,
+                                request.type, request.title, request.file, request.viewer);
+                        }
                         break;
                     }
                     case 'rstudioapi': {
-                        await dispatchRStudioAPICall(request.action, request.args, request.sd);
+                        if (request.action && request.args && request.sd) {
+                            await dispatchRStudioAPICall(request.action, request.args, request.sd);
+                        }
                         break;
                     }
                     default:
@@ -797,7 +837,78 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
             console.info(`[updateRequest] Ignored request outside workspace`);
         }
         if (isLiveShare()) {
-            void rHostService.notifyRequest(requestFile);
+            void rHostService?.notifyRequest(requestFile);
         }
+    }
+}
+
+export async function cleanupSession(pidArg: string): Promise<void> {
+    if (pid === pidArg) {
+        if (sessionStatusBarItem) {
+            sessionStatusBarItem.text = 'R: (not attached)';
+            sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
+        }
+        server = undefined;
+        workspaceData.globalenv = {};
+        workspaceData.loaded_namespaces = [];
+        workspaceData.search = [];
+        rWorkspace?.refresh();
+        removeSessionFiles();
+        await setContext('rSessionActive', false);
+    }
+}
+
+async function watchProcess(pid: string): Promise<string> {
+    function pidIsRunning(pid: number) {
+        try {
+            process.kill(pid, 0);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    const pidArg = Number(pid);
+
+    let res = true;
+    do {
+        res = pidIsRunning(pidArg);
+        await new Promise(resolve => {
+            setTimeout(resolve, 1000);
+        });
+
+    } while (res);
+    return pid;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function sessionRequest(server: SessionServer, data: any): Promise<any> {
+    try {
+        const response = await fetch(`http://${server.host}:${server.port}`, {
+            agent: httpAgent,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                Authorization: server.token
+            },
+            body: JSON.stringify(data),
+            follow: 0,
+            timeout: 500,
+        });
+
+        if (!response.ok) {
+            throw new Error(`Error! status: ${response.status}`);
+        }
+
+        return response.json();
+    } catch (error) {
+        if (error instanceof Error) {
+            console.log('error message: ', error.message);
+        } else {
+            console.log('unexpected error: ', error);
+        }
+
+        return undefined;
     }
 }

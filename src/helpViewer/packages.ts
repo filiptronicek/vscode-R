@@ -3,8 +3,7 @@ import * as cheerio from 'cheerio';
 import * as vscode from 'vscode';
 
 import { RHelp } from '.';
-import { getRpath, getConfirmation, executeAsTask, doWithProgress, getCranUrl } from '../util';
-import { AliasProvider } from './helpProvider';
+import { getConfirmation, executeAsTask, doWithProgress, getCranUrl } from '../util';
 import { getPackagesFromCran } from './cran';
 
 
@@ -34,12 +33,12 @@ export enum TopicType {
 export interface Topic {
     name: string;
     description: string;
-    pkgName: string;
-    href?: string;
-    helpPath: string;
     type: TopicType;
     aliases?: string[];
-    isGrouped?: boolean;
+    helpPath: string;
+}
+interface TopicExtra extends Topic {
+    href: string;
 }
 
 
@@ -82,15 +81,13 @@ export class PackageManager {
 
     readonly rHelp: RHelp;
 
-	readonly aliasProvider: AliasProvider;
-
     readonly state: vscode.Memento;
 
     readonly cwd?: string;
 
     // names of packages to be highlighted in the package list
     // public favoriteNames: string[] = [];
-    
+
     public favoriteNames: Set<string> = new Set();
 
 
@@ -109,7 +106,7 @@ export class PackageManager {
     }
 
     // Funciton to clear only the cached files regarding an individual package etc.
-	public async clearCachedFiles(re?: string|RegExp): Promise<void> {
+    public async clearCachedFiles(re?: string|RegExp): Promise<void> {
         let cache: CachedIndexFiles | undefined;
         if(re){
             const oldCache = this.state.get<CachedIndexFiles>('r.helpPanel.cachedIndexFiles', []);
@@ -121,7 +118,7 @@ export class PackageManager {
             cache = undefined;
         }
         await this.state.update('r.helpPanel.cachedIndexFiles', cache);
-	}
+    }
 
     // Function to add/remove packages from favorites
     public addFavorite(pkgName: string): string[] {
@@ -176,13 +173,13 @@ export class PackageManager {
         }
     }
 
-    // let the user pick and install a package from CRAN 
+    // let the user pick and install a package from CRAN
     public async pickAndInstallPackages(pickMany: boolean = false): Promise<boolean> {
         const packages = await doWithProgress(() => this.getPackages(true), this.rHelp.treeViewWrapper.viewId);
         if(!packages?.length){
             return false;
         }
-        const pkgs = await pickPackages(packages, 'Please selecte a package.', pickMany);
+        const pkgs = await pickPackages(packages, 'Please select a package.', pickMany);
         if(pkgs?.length){
             const pkgsConfirmed = await confirmPackages('Are you sure you want to install these packages?', pkgs);
             if(pkgsConfirmed?.length){
@@ -195,7 +192,7 @@ export class PackageManager {
 
     // remove a specified package. The packagename is selected e.g. in the help tree-view
     public async removePackage(pkgName: string): Promise<boolean> {
-        const rPath = await getRpath();
+        const rPath = this.rHelp.rPath;
         const args = ['--silent', '--slave', '--no-save', '--no-restore', '-e', `remove.packages('${pkgName}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
         const confirmation = 'Yes, remove package!';
@@ -212,7 +209,7 @@ export class PackageManager {
     // actually install packages
     // confirmation can be skipped (e.g. if the user has confimred before)
     public async installPackages(pkgNames: string[], skipConfirmation: boolean = false): Promise<boolean> {
-        const rPath = await getRpath();
+        const rPath = this.rHelp.rPath;
         const cranUrl = await getCranUrl('', this.cwd);
         const args = [`--silent`, '--slave', `-e`, `install.packages(c(${pkgNames.map(v => `'${v}'`).join(',')}),repos='${cranUrl}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
@@ -226,9 +223,9 @@ export class PackageManager {
         }
         return false;
     }
-    
+
     public async updatePackages(skipConfirmation: boolean = false): Promise<boolean> {
-        const rPath = await getRpath();
+        const rPath = this.rHelp.rPath;
         const cranUrl = await getCranUrl('', this.cwd);
         const args = ['--silent', '--slave', '--no-save', '--no-restore', '-e', `update.packages(ask=FALSE,repos='${cranUrl}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
@@ -267,8 +264,8 @@ export class PackageManager {
                 pkg.isFavorite = this.favoriteNames.has(pkg.name);
                 pkg.helpPath = (
                     pkg.name === 'doc' ?
-                    '/doc/html/packages.html' :
-                    `/library/${pkg.name}/html/00Index.html`
+                        '/doc/html/packages.html' :
+                        `/library/${pkg.name}/html/00Index.html`
                 );
             }
         }
@@ -278,7 +275,7 @@ export class PackageManager {
 
     // parses a package's index file to produce a list of help topics
     // highlights ths 'home' topic and adds entries for the package index and DESCRIPTION file
-    public async getTopics(pkgName: string, summarize: boolean = false, skipMeta: boolean = false): Promise<Topic[] | undefined> {
+    public async getTopics(pkgName: string, summarize: boolean = false): Promise<Topic[] | undefined> {
 
         const indexEntries = await this.getParsedIndexFile(`/library/${pkgName}/html/00Index.html`);
 
@@ -286,9 +283,8 @@ export class PackageManager {
             return undefined;
         }
 
-        const topics: Topic[] = indexEntries.map(v => {
-            const topic: Topic & {href: string} = {
-                pkgName: pkgName,
+        const topics: TopicExtra[] = indexEntries.map(v => {
+            const topic: TopicExtra = {
                 name: v.name,
                 description: v.description,
                 href: v.href || v.name,
@@ -296,45 +292,41 @@ export class PackageManager {
                 helpPath: '' // replaced below
             };
 
-            topic.type = (topic.name === `${topic.pkgName}-package` ? TopicType.HOME : TopicType.NORMAL);
+            topic.type = (topic.name === `${pkgName}-package` ? TopicType.HOME : TopicType.NORMAL);
 
             topic.helpPath = (
-                topic.pkgName === 'doc' ?
-                `/doc/html/${topic.href}` :
-                `/library/${topic.pkgName}/html/${topic.href}`
+                pkgName === 'doc' ?
+                    `/doc/html/${topic.href}` :
+                    `/library/${pkgName}/html/${topic.href}`
             );
             return topic;
         });
 
-        if(!skipMeta){
-            const ind = topics.findIndex(v => v.type === TopicType.HOME);
-            let homeTopic: Topic | undefined = undefined;
-            if(ind >= 0){
-                homeTopic = topics.splice(ind, 1)[0];
-            }
+        const ind = topics.findIndex(v => v.type === TopicType.HOME);
+        let homeTopic: TopicExtra | undefined = undefined;
+        if(ind >= 0){
+            homeTopic = topics.splice(ind, 1)[0];
+        }
 
-            const indexTopic: Topic = {
-                pkgName: pkgName,
-                name: 'Index',
-                description: '',
-                href: '00Index.html',
-                helpPath: `/library/${pkgName}/html/00Index.html`,
-                type: TopicType.INDEX
-            };
+        const indexTopic: TopicExtra = {
+            name: 'Index',
+            description: '',
+            href: '00Index.html',
+            helpPath: `/library/${pkgName}/html/00Index.html`,
+            type: TopicType.INDEX
+        };
 
-            const descriptionTopic: Topic = {
-                pkgName: pkgName,
-                name: 'DESCRIPTION',
-                description: '',
-                href: '../DESCRIPTION',
-                helpPath: `/library/${pkgName}/DESCRIPTION`,
-                type: TopicType.META
-            };
+        const descriptionTopic: TopicExtra = {
+            name: 'DESCRIPTION',
+            description: '',
+            href: '../DESCRIPTION',
+            helpPath: `/library/${pkgName}/DESCRIPTION`,
+            type: TopicType.META
+        };
 
-            topics.unshift(indexTopic, descriptionTopic);
-            if(homeTopic){
-                topics.unshift(homeTopic);
-            }
+        topics.unshift(indexTopic, descriptionTopic);
+        if(homeTopic){
+            topics.unshift(homeTopic);
         }
 
         const ret = (summarize ? summarizeTopics(topics) : topics);
@@ -350,33 +342,33 @@ export class PackageManager {
         return ret;
     }
 
-	// retrieve and parse an index file
-	// (either list of all packages, or documentation entries of a package)
-	private async getParsedIndexFile(path: string): Promise<IndexEntry[]|undefined> {
+    // retrieve and parse an index file
+    // (either list of all packages, or documentation entries of a package)
+    private async getParsedIndexFile(path: string): Promise<IndexEntry[]|undefined> {
 
         let indexItems = this.getCachedIndexFile(path);
 
-		// only read and parse file if not cached yet
-		if(!indexItems){
-			const helpFile = await this.rHelp.getHelpFileForPath(path, false);
-			if(!helpFile?.html){
-				// set missing files to null
+        // only read and parse file if not cached yet
+        if(!indexItems){
+            const helpFile = await this.rHelp.getHelpFileForPath(path, false);
+            if(!helpFile?.html){
+                // set missing files to null
                 indexItems = undefined;
-			} else{
-				// parse and cache file
-				indexItems = parseIndexFile(helpFile.html);
-			}
+            } else{
+                // parse and cache file
+                indexItems = parseIndexFile(helpFile.html);
+            }
             void this.updateCachedIndexFile(path, indexItems);
-		}
+        }
 
-		// return cache entry. make new array to avoid messing with the cache
+        // return cache entry. make new array to avoid messing with the cache
         let ret: IndexEntry[] | undefined = undefined;
         if(indexItems){
             ret = [];
             ret.push(...indexItems);
         }
-		return ret;
-	}
+        return ret;
+    }
 }
 
 
@@ -463,7 +455,7 @@ async function pickPackages(packages: Package[], placeHolder: string, pickMany: 
         const qp = await vscode.window.showQuickPick(qpItems, qpOptions);
         ret = (qp ? [qp.package] : undefined);
     }
-    
+
     return ret;
 }
 
@@ -472,7 +464,6 @@ function summarizeTopics(topics: Topic[]): Topic[] {
     const topicMap = new Map<string, Topic>();
     for(const topic of topics){
         if(topicMap.has(topic.helpPath)){
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
             const newTopic = <Topic>topicMap.get(topic.helpPath); // checked above that key is present
             if(newTopic.aliases){
                 newTopic.aliases.push(topic.name);
@@ -482,7 +473,6 @@ function summarizeTopics(topics: Topic[]): Topic[] {
         } else{
             const newTopic: Topic = {
                 ...topic,
-                isGrouped: true
             };
             if(newTopic.type === TopicType.NORMAL && newTopic.description){
                 newTopic.aliases = [newTopic.name];

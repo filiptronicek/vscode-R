@@ -157,8 +157,7 @@ normalise_pos_or_range_arg <- function(location) {
         lapply(
             location,
             function(a_location) {
-                if (rstudioapi::is.document_position(a_location) ||
-                    rstudioapi::is.document_range(a_location)) {
+                if (rstudioapi::is.document_position(a_location) || rstudioapi::is.document_range(a_location)) {
                     a_location
                 } else if (is_positionable(a_location)) {
                     rstudioapi::as.document_position(a_location)
@@ -180,8 +179,7 @@ normalise_pos_or_range_arg <- function(location) {
 normalise_text_arg <- function(text, location_length) {
     if (length(text) == location_length) {
         text
-    }
-    else if (length(text) == 1 && location_length > 1) {
+    } else if (length(text) == 1 && location_length > 1) {
         rep(text, location_length)
     } else {
         stop(
@@ -210,33 +208,33 @@ update_addin_registry <- function(addin_registry) {
                     )
                 description_result <-
                     tryCatch({
-                            addin_description <-
-                                as.data.frame(read.dcf(package_dcf),
-                                    stringsAsFactors = FALSE
-                                )
-
-                            if (ncol(addin_description) < 4) {
-                                NULL
-                            }
-                            ## if less than 4 columns it's malformed
-                            ## a NULL will be ignored in the rbind
-
-                            addin_description$package <- package
-                            names(addin_description) <- addin_description_names
-
-                            addin_description[, addin_description_names]
-                            ## this filters out any extra columns
-                        },
-                        error = function(cond) {
-                            message(
-                                "addins.dcf file for ", package,
-                                " could not be read from R library. ",
-                                "The RStudio addin picker will not ",
-                                "contain it's addins"
+                        addin_description <-
+                            as.data.frame(read.dcf(package_dcf),
+                                stringsAsFactors = FALSE
                             )
 
+                        if (ncol(addin_description) < 4) {
                             NULL
                         }
+                        ## if less than 4 columns it's malformed
+                        ## a NULL will be ignored in the rbind
+
+                        addin_description$package <- package
+                        names(addin_description) <- addin_description_names
+
+                        addin_description[, addin_description_names]
+                        ## this filters out any extra columns
+                    },
+                    error = function(cond) {
+                        message(
+                            "addins.dcf file for ", package,
+                            " could not be read from R library. ",
+                            "The RStudio addin picker will not ",
+                            "contain it's addins"
+                        )
+
+                        NULL
+                    }
                     )
 
                 description_result

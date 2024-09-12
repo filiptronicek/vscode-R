@@ -13,9 +13,9 @@
         "--extensionDevelopmentPath=${workspaceFolder}"
       ],
       "outFiles": [
-        "${workspaceRoot}/out/src/**/*.js"
+        "${workspaceFolder}/out/src/**/*.js"
       ],
-      "preLaunchTask": "npm: watch"
+      "preLaunchTask": "watchAll"
     },
     {
       "name": "Launch Extension (--disable-extensions)",
@@ -27,9 +27,9 @@
         "--disable-extensions"
       ],
       "outFiles": [
-        "${workspaceRoot}/out/src/**/*.js"
+        "${workspaceFolder}/out/src/**/*.js"
       ],
-      "preLaunchTask": "npm: watch"
+      "preLaunchTask": "watchAll"
     },
     {
       "name": "Extension Tests",

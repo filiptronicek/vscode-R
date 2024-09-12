@@ -39,7 +39,8 @@ insertText <- function(location, text, id = NULL) {
         ))
     } else if (missing(location)) {
         ## handling insertText(text = "text")
-        return(invisible(rstudioapi_call("replace_text_in_current_selection",
+        return(invisible(rstudioapi_call(
+            "replace_text_in_current_selection",
             text = text,
             id = id
         )))
@@ -229,14 +230,14 @@ viewer <- function(url, height = NULL) {
 }
 
 getVersion <- function() {
-    numeric_version(0)
+    numeric_version("0")
 }
 
 versionInfo <- function() {
     list(
         citation = "",
         mode = "vscode",
-        version = numeric_version(0),
+        version = numeric_version("0"),
         release_name = "vscode"
     )
 }
